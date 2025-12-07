@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SALTY AR - REGAL VOLUMETRIC</title>
+    <title>SALTY AR - FINAL</title>
     
     <style>
         body { margin: 0; overflow: hidden; background: #080808; font-family: sans-serif; }
@@ -32,9 +32,9 @@
             // --- COLOR LOGIC ---
             vec3 initialColor = customColor;
             
-            // Text color Morph: Gold -> Soft Purple
+            // Text Morph: Gold -> Soft Purple
             if (type < 0.5) {
-                // Target: Soft Salty Lavender (R:0.65, G:0.5, B:0.95)
+                // Target: Soft Salty Lavender
                 vec3 targetColor = vec3(0.65, 0.5, 0.95); 
                 float mixFactor = smoothstep(0.1, 0.8, uExpansion);
                 vColor = mix(initialColor, targetColor, mixFactor);
@@ -54,7 +54,7 @@
 
             float distSize = 400.0 / -mvPosition.z;
             
-            // Sparkle pulse
+            // Sparkle
             float pulse = 1.0;
             if(type > 0.5 && customColor.b > 0.8) {
                  pulse = 1.0 + sin(uTime * 10.0 + position.x) * 0.15;
@@ -63,9 +63,8 @@
             // --- DYNAMIC SIZING ---
             float finalSize = size;
             
-            // Text: Grow slightly to ensure the "Cloud" volume looks solid
+            // Text: Grow volume to create solid look
             if (type < 0.5) {
-                // Expansion Multiplier reduced slightly to prevent blobs, relies on density now
                 finalSize = size * (1.0 + uExpansion * 1.5); 
             }
             
@@ -125,7 +124,7 @@
         }
         const tex = createFlare();
 
-        // --- TEXT DATA (TRUE VOLUME) ---
+        // --- TEXT DATA ---
         function getTextCoordinates() {
             const W=600, H=200;
             const c=document.createElement('canvas');
@@ -138,33 +137,23 @@
             
             const data = ctx.getImageData(0,0,W,H).data;
             const points = [];
-            const xyStep = 2; // High density scan
-            const zThickness = 3.5; // Thicker letter block
-            
-            // DENSITY FACTOR: Particles per pixel
-            // Previously we looped layers (k=0..3). 
-            // Now we create a random volume cloud.
+            const xyStep = 2; // High density
+            const zThickness = 3.5; 
             
             for(let y=0; y<H; y+=xyStep) {
                 for(let x=0; x<W; x+=xyStep) {
                     if(data[(y*W+x)*4]>128) {
                         const baseX = (x - W/2) * 0.05;
                         const baseY = ((H-y) - H/2) * 0.05;
-
-                        // Create ~5 particles for every pixel, randomly placed in depth
-                        // This prevents "Sheets" or "Slices" appearing from the side.
+                        // Volumetric Text: Random scatter instead of layers
                         for(let k=0; k<5; k++) {
-                             // Random Z within the thickness range
                              const rndZ = (Math.random() - 0.5) * zThickness;
-                             
-                             // Slight XY noise for "Fuzzy/Solid" feel
                              const nX = (Math.random()-0.5)*0.15;
                              const nY = (Math.random()-0.5)*0.15;
-
                              points.push({ 
                                  x: baseX + nX, 
                                  y: baseY + nY, 
-                                 z: rndZ // Fully random Z
+                                 z: rndZ 
                              });
                         }
                     }
@@ -204,7 +193,7 @@
                 const rnd = Math.random();
 
                 if (rnd < 0.35) {
-                    // DIAL (OVAL)
+                    // DIAL
                     const theta = Math.random() * Math.PI * 2;
                     const isBezel = Math.random() > 0.5; 
                     let w, h; 
@@ -231,7 +220,7 @@
                     }
                 } 
                 else if (rnd < 0.90) {
-                    // STRAP CHARMS
+                    // CHARMS
                     const charmIdx = Math.floor(Math.random() * 6);
                     const isTop = charmIdx < 3;
                     const cStep = charmIdx % 3;
@@ -263,7 +252,7 @@
                     }
                 }
                 else {
-                    // HANDS & INDICES
+                    // NEEDLES & INDICES
                     if (Math.random() > 0.4) {
                         const idx = Math.floor(Math.random()*12); 
                         const ang = (idx / 12) * Math.PI * 2;
@@ -277,7 +266,7 @@
                         rVal=0.2; gVal=0.2; bVal=0.2; 
                         pSize = 0.35;
                     } else {
-                        // DEEP BLACK/PURPLE HANDS
+                        // BLACK/PURPLE HANDS
                         const isMin = Math.random() > 0.5;
                         const angle = isMin ? 5.2 : 0.8;
                         const len = isMin ? DIAL_H * 0.7 : DIAL_H * 0.5;
@@ -286,7 +275,7 @@
                         sy = d * Math.sin(angle);
                         sz = 1.5; 
                         
-                        rVal=0.10; gVal=0.0; bVal=0.18; // Almost Black
+                        rVal=0.10; gVal=0.0; bVal=0.18; 
                     }
                 }
 
@@ -346,8 +335,17 @@
             const time = clock.getElapsedTime();
 
             sys.material.uniforms.uTime.value = time;
-            sys.rotation.y += spinVelX;
+
+            // --- AUTO ROTATION LOGIC ---
+            // When Expansion is 0.0 (Watch Mode), rotate at speed 0.005.
+            // When Expansion is 1.0 (Text Mode), rotate at speed 0.0.
+            const idleRotation = (1.0 - currentExpansion) * 0.005;
+            
+            // Combine User Spin (spinVelX) + Idle Spin
+            sys.rotation.y += spinVelX + idleRotation;
             sys.rotation.x += spinVelY;
+
+            // Decay user input physics
             spinVelX *= decay; 
             spinVelY *= decay;
 
