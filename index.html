@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>SALTY AR - REGAL OVAL CHARM</title>
+    <title>SALTY AR - REGAL VOLUMETRIC</title>
     
     <style>
         body { margin: 0; overflow: hidden; background: #080808; font-family: sans-serif; }
@@ -24,13 +24,25 @@
         
         uniform float uTime;
         uniform float uJitter; 
-        uniform float uExpansion; // New: Controls text swelling
+        uniform float uExpansion; 
 
         void main() {
-            vColor = customColor;
             vec3 pos = position;
 
-            // Jitter for rotation speed
+            // --- COLOR LOGIC ---
+            vec3 initialColor = customColor;
+            
+            // Text color Morph: Gold -> Soft Purple
+            if (type < 0.5) {
+                // Target: Soft Salty Lavender (R:0.65, G:0.5, B:0.95)
+                vec3 targetColor = vec3(0.65, 0.5, 0.95); 
+                float mixFactor = smoothstep(0.1, 0.8, uExpansion);
+                vColor = mix(initialColor, targetColor, mixFactor);
+            } else {
+                vColor = initialColor;
+            }
+
+            // Jitter Physics
             if (uJitter > 0.0) {
                  float intensity = (type > 0.5) ? 0.3 : 0.05; 
                  float vib = sin(uTime * 40.0 + position.y * 12.0);
@@ -42,18 +54,19 @@
 
             float distSize = 400.0 / -mvPosition.z;
             
-            // "Sparkle" Pulse
-            float pulseSpeed = (vColor.g > 0.9 && vColor.b > 0.9) ? 10.0 : 2.0; 
-            float pulse = 1.0 + sin(uTime * pulseSpeed + position.x * 0.9) * 0.10;
+            // Sparkle pulse
+            float pulse = 1.0;
+            if(type > 0.5 && customColor.b > 0.8) {
+                 pulse = 1.0 + sin(uTime * 10.0 + position.x) * 0.15;
+            }
             
             // --- DYNAMIC SIZING ---
             float finalSize = size;
             
-            // If this is a Text particle (type 0.0) and we are exploding (uExpansion > 0),
-            // dramatically increase size to fill gaps between layers.
+            // Text: Grow slightly to ensure the "Cloud" volume looks solid
             if (type < 0.5) {
-                // Grow up to 3.5x larger when fully expanded
-                finalSize = size * (1.0 + uExpansion * 2.5); 
+                // Expansion Multiplier reduced slightly to prevent blobs, relies on density now
+                finalSize = size * (1.0 + uExpansion * 1.5); 
             }
             
             gl_PointSize = finalSize * pulse * distSize;
@@ -104,15 +117,15 @@
             const ctx=c.getContext('2d');
             const g=ctx.createRadialGradient(32,32,0,32,32,32);
             g.addColorStop(0,'rgba(255,255,255,1)');
-            g.addColorStop(0.2,'rgba(255,255,255,0.6)'); 
-            g.addColorStop(0.5,'rgba(255,255,255,0.2)');
+            g.addColorStop(0.2,'rgba(255,255,255,0.5)'); 
+            g.addColorStop(0.5,'rgba(255,255,255,0.1)');
             g.addColorStop(1,'rgba(0,0,0,0)');
             ctx.fillStyle=g; ctx.fillRect(0,0,s,s);
             return new THREE.CanvasTexture(c);
         }
         const tex = createFlare();
 
-        // --- TEXT DATA ---
+        // --- TEXT DATA (TRUE VOLUME) ---
         function getTextCoordinates() {
             const W=600, H=200;
             const c=document.createElement('canvas');
@@ -125,30 +138,33 @@
             
             const data = ctx.getImageData(0,0,W,H).data;
             const points = [];
-            const xyStep = 3; 
-            // 4 Layers created the "striped" look.
-            // With dynamic sizing, these 4 layers will now merge into one block.
-            const zLayers = 4;        
-            const zThickness = 2.0;   
+            const xyStep = 2; // High density scan
+            const zThickness = 3.5; // Thicker letter block
+            
+            // DENSITY FACTOR: Particles per pixel
+            // Previously we looped layers (k=0..3). 
+            // Now we create a random volume cloud.
             
             for(let y=0; y<H; y+=xyStep) {
                 for(let x=0; x<W; x+=xyStep) {
                     if(data[(y*W+x)*4]>128) {
                         const baseX = (x - W/2) * 0.05;
                         const baseY = ((H-y) - H/2) * 0.05;
-                        for(let k=0; k<zLayers; k++) {
-                             const layerPct = k / (zLayers - 1);
-                             const baseZ = (layerPct - 0.5) * zThickness;
+
+                        // Create ~5 particles for every pixel, randomly placed in depth
+                        // This prevents "Sheets" or "Slices" appearing from the side.
+                        for(let k=0; k<5; k++) {
+                             // Random Z within the thickness range
+                             const rndZ = (Math.random() - 0.5) * zThickness;
                              
-                             // Add noise to help hiding the "layer sheets"
-                             const noiseX = (Math.random()-0.5)*0.15;
-                             const noiseY = (Math.random()-0.5)*0.15;
-                             const noiseZ = (Math.random()-0.5)*0.15;
+                             // Slight XY noise for "Fuzzy/Solid" feel
+                             const nX = (Math.random()-0.5)*0.15;
+                             const nY = (Math.random()-0.5)*0.15;
 
                              points.push({ 
-                                 x: baseX + noiseX, 
-                                 y: baseY + noiseY, 
-                                 z: baseZ + noiseZ
+                                 x: baseX + nX, 
+                                 y: baseY + nY, 
+                                 z: rndZ // Fully random Z
                              });
                         }
                     }
@@ -158,7 +174,7 @@
         }
         const textPoints = getTextCoordinates();
 
-        // --- REGAL WATCH GENERATOR ---
+        // --- WATCH GENERATOR ---
         function createWatchSystem() {
             const textBaseCount = textPoints.length; 
             const debrisCount = 45000; 
@@ -171,11 +187,9 @@
             const meta = new Float32Array(total * 4); 
             const orig = new Float32Array(total * 3);
 
-            // DIAL SPECS
             const DIAL_W = 4.0; 
             const DIAL_H = 5.8; 
             const BEZEL_W = 0.8; 
-            // STRAP CHARMS
             const CHARM_SPACING = 3.6; 
             const START_Y = DIAL_H + 2.0;
             const CHARM_POS = [START_Y, START_Y + CHARM_SPACING, START_Y + CHARM_SPACING*2];
@@ -194,9 +208,7 @@
                     const theta = Math.random() * Math.PI * 2;
                     const isBezel = Math.random() > 0.5; 
                     let w, h; 
-                    
                     if (isBezel) {
-                        // Gold Ridge
                         w = DIAL_W + BEZEL_W * (0.2 + 0.8*Math.random());
                         h = DIAL_H + BEZEL_W * (0.2 + 0.8*Math.random());
                         sx = w * Math.cos(theta);
@@ -207,7 +219,6 @@
                         rVal=1.0; gVal=0.85; bVal=0.3; 
                         pSize = 0.4;
                     } else {
-                        // Face
                         const rSq = Math.sqrt(Math.random());
                         w = DIAL_W * rSq;
                         h = DIAL_H * rSq;
@@ -218,7 +229,6 @@
                         rVal=0.96; gVal=0.87; bVal=0.6;
                         pSize = 0.45;
                     }
-
                 } 
                 else if (rnd < 0.90) {
                     // STRAP CHARMS
@@ -267,6 +277,7 @@
                         rVal=0.2; gVal=0.2; bVal=0.2; 
                         pSize = 0.35;
                     } else {
+                        // DEEP BLACK/PURPLE HANDS
                         const isMin = Math.random() > 0.5;
                         const angle = isMin ? 5.2 : 0.8;
                         const len = isMin ? DIAL_H * 0.7 : DIAL_H * 0.5;
@@ -275,7 +286,7 @@
                         sy = d * Math.sin(angle);
                         sz = 1.5; 
                         
-                        rVal=1.0; gVal=0.9; bVal=0.4;
+                        rVal=0.10; gVal=0.0; bVal=0.18; // Almost Black
                     }
                 }
 
@@ -284,14 +295,14 @@
                 orig.set([sx,sy,sz], i3);
                 
                 col.set([rVal, gVal, bVal], i3);
-                size[i] = pSize; // Base size for Watch state
+                size[i] = pSize; 
 
                 if (i < textBaseCount) {
                     const t = textPoints[i];
-                    type[i] = 0.0; // Mark as Text
+                    type[i] = 0.0; // TEXT
                     meta.set([t.x, t.y, t.z, 0], i4);
                 } else {
-                    type[i] = 1.0; 
+                    type[i] = 1.0; // DEBRIS
                     const v = new THREE.Vector3(sx,sy,sz).normalize();
                     v.x += (Math.random()-0.5)*0.2; 
                     v.y += (Math.random()-0.5)*0.2;
@@ -313,7 +324,7 @@
                     pointTexture: { value: tex },
                     uTime: { value: 0 },
                     uJitter: { value: 0 },
-                    uExpansion: { value: 0 } // Linked to Expansion
+                    uExpansion: { value: 0 } 
                 },
                 vertexShader: document.getElementById('vertexShader').textContent,
                 fragmentShader: document.getElementById('fragmentShader').textContent,
@@ -335,15 +346,12 @@
             const time = clock.getElapsedTime();
 
             sys.material.uniforms.uTime.value = time;
-
             sys.rotation.y += spinVelX;
             sys.rotation.x += spinVelY;
             spinVelX *= decay; 
             spinVelY *= decay;
 
             currentExpansion += (targetExpansion - currentExpansion) * 0.1;
-            
-            // UPDATE SHADER UNIFORM for expansion sizing
             sys.material.uniforms.uExpansion.value = currentExpansion;
 
             let speed = Math.abs(spinVelX) + Math.abs(spinVelY);
